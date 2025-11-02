@@ -140,8 +140,6 @@ void TinyDFT_init(TinyDFT_p *TinyDFT_, char *bas_fname, char *xyz_fname)
     TinyDFT->JKacc_buf     = (double*) malloc_aligned(DBL_MSIZE * total_buf_size,        64);
     TinyDFT->FM_strip_buf  = (double*) malloc_aligned(MN_strip_msize * nthread,          64);
     TinyDFT->FN_strip_buf  = (double*) malloc_aligned(MN_strip_msize * nthread,          64);
-    TinyDFT->J_blk_locks = (pthread_spinlock_t*) malloc_aligned(sizeof(pthread_spinlock_t) * TinyDFT->num_total_sp, 64);
-    TinyDFT->K_blk_locks = (pthread_spinlock_t*) malloc_aligned(sizeof(pthread_spinlock_t) * TinyDFT->num_total_sp, 64);
 
 
     assert(TinyDFT->blk_mat_ptr  != NULL);
@@ -166,10 +164,6 @@ void TinyDFT_init(TinyDFT_p *TinyDFT_, char *bas_fname, char *xyz_fname)
         {
             TinyDFT->blk_mat_ptr[idx] = pos;
             pos += TinyDFT->shell_bf_num[i] * TinyDFT->shell_bf_num[j];
-            //omp_init_lock(&TinyDFT->J_blk_locks[idx]);
-            //omp_init_lock(&TinyDFT->K_blk_locks[idx]);
-            pthread_spin_init(&TinyDFT->J_blk_locks[idx], PTHREAD_PROCESS_PRIVATE);
-            pthread_spin_init(&TinyDFT->K_blk_locks[idx], PTHREAD_PROCESS_PRIVATE);
             idx++;
         }
     }
@@ -327,8 +321,6 @@ void TinyDFT_destroy(TinyDFT_p *_TinyDFT)
     free_aligned(TinyDFT->JKacc_buf);
     free_aligned(TinyDFT->FM_strip_buf);
     free_aligned(TinyDFT->FN_strip_buf);
-    free_aligned(TinyDFT->J_blk_locks);
-    free_aligned(TinyDFT->K_blk_locks);
     
     // Free matrices and arrays used in XC functional calculation
     free(TinyDFT->int_grid);

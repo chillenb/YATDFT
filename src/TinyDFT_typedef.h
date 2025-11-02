@@ -73,10 +73,6 @@ struct TinyDFT_struct
     int    *blk_mat_ptr;    // Size num_total_sp, offsets of blocks in the blocked matrix
     int    *Mpair_flag;     // Size nshell*nthread, flags for marking if (M, i) is updated 
     int    *Npair_flag;     // Size nshell*nthread, flags for marking if (N, i) is updated 
-//    omp_lock_t *J_blk_locks;
-//    omp_lock_t *K_blk_locks;
-    pthread_spinlock_t *J_blk_locks;
-    pthread_spinlock_t *K_blk_locks;
     double *J_blk_mat;      // Size nbf-by-nbf, blocked J matrix
     double *K_blk_mat;      // Size nbf-by-nbf, blocked K matrix
     double *D_blk_mat;      // Size nbf-by-nbf, blocked D matrix
