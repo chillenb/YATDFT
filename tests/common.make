@@ -1,13 +1,13 @@
-LIBXC_INSTALL_DIR    = /home/mkurisu/Workspace/libxc/install
-SIMINT_INSTALL_DIR   = /home/mkurisu/Workspace/simint/build-avx/install
-YATDFT_INSTALL_DIR   = /home/mkurisu/Workspace/YATDFT
-OPENBLAS_INSTALL_DIR = /home/mkurisu/Workspace/OpenBLAS-git/install
+LIBXC_INSTALL_DIR    = /usr
+SIMINT_INSTALL_DIR   = /home/chillenb/yatdft/simint/simint-install
+YATDFT_INSTALL_DIR   = /home/chillenb/yatdft/YATDFT
+# OPENBLAS_INSTALL_DIR = /home/mkurisu/Workspace/OpenBLAS-git/install
 
 DEFS    = 
 INCS    = -I$(YATDFT_INSTALL_DIR)/include -I$(SIMINT_INSTALL_DIR)/include
-CFLAGS  = $(INCS) -Wall -g -std=gnu11 -O3 -fPIC $(DEFS)
+CFLAGS  = $(INCS) -Wall -g -std=gnu11 -O3 -march=native -mtune=native -fPIC $(DEFS)
 LDFLAGS = -g -O3 -fopenmp
-LIBS    = $(YATDFT_INSTALL_DIR)/lib/libYATDFT.a $(SIMINT_INSTALL_DIR)/lib64/libsimint.a 
+LIBS    = $(YATDFT_INSTALL_DIR)/lib/libYATDFT.a $(SIMINT_INSTALL_DIR)/lib/libsimint.a 
 
 ifeq ($(shell $(CC) --version 2>&1 | grep -c "icc"), 1)
 CFLAGS  += -fopenmp -xHost
@@ -20,8 +20,8 @@ endif
 
 ifeq ($(strip $(USE_MKL)), 1)
 DEFS    += -DUSE_MKL
-CFLAGS  += -mkl
-LDFLAGS += -mkl
+CFLAGS  +=  -m64  -I"${MKLROOT}/include"
+LDFLAGS +=   -m64  -L${MKLROOT}/lib -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -ldl
 endif
 
 ifeq ($(strip $(USE_OPENBLAS)), 1)

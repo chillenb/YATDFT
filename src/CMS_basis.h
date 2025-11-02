@@ -1,6 +1,8 @@
 #ifndef __CMS_BASIS_H__
 #define __CMS_BASIS_H__
 
+#include <stdint.h>
+
 #include "CMS_config.h"
 
 struct BasisSet

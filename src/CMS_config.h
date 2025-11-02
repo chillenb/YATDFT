@@ -8,21 +8,15 @@
 #define HAS_MALLOC_H
 #endif
 
-#define _DEBUG_LEVEL_    1   // 0 to 10, 0 is no debug print info at all, 10 is full info
+#define _DEBUG_LEVEL_    10   // 0 to 10, 0 is no debug print info at all, 10 is full info
 
-static inline void *CMS_malloc_aligned(size_t size, size_t alignment)
-{
-    void *ptr = NULL;
-    posix_memalign(&ptr, alignment, size);
-    return ptr;
-}
 
 static inline void CMS_free_aligned(void *mem)
 {
     free(mem);
 }
 
-#define ALIGNED_MALLOC(size)  CMS_malloc_aligned(size, __ALIGNLEN__)
+#define ALIGNED_MALLOC(size)  CMS_malloc_aligned(size, YATDFT_ALIGNLEN)
 #define ALIGNED_FREE(addr)    CMS_free_aligned(addr)
 
 #if ( _DEBUG_LEVEL_ == -1 )
@@ -72,5 +66,14 @@ typedef enum
     CMS_STATUS_FILEIO_FAILED    = 6,
     CMS_STATUS_OFFLOAD_ERROR    = 7
 } CMSStatus_t;
+
+
+static inline void *CMS_malloc_aligned(size_t size, size_t alignment)
+{
+    void *ptr = NULL;
+    int retval = posix_memalign(&ptr, alignment, size);
+    CMS_ASSERT(retval == 0)
+    return ptr;
+}
 
 #endif

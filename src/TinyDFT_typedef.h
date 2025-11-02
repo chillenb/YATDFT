@@ -5,6 +5,9 @@
 #include <xc.h>
 #endif
 
+#include <omp.h>
+#include <pthread.h>
+
 #include "linalg_lib_wrapper.h"
 
 #include "libCMS.h"
@@ -33,6 +36,7 @@ struct TinyDFT_struct
     int    *shell_bf_num;   // Size nshell, Number of basis function in each shell
     double prim_scrtol;     // Primitive screening tolerance
     double shell_scrtol2;   // Square of the shell screening tolerance
+    double scf_scrtol;      // SCF screening tolerance for JK build
     double *sp_scrval;      // Size num_total_sp, square of screening values of each shell pair
     double *bf_pair_scrval; // Screening values of each BF pair
     Simint_p   simint;      // Simint object for ERI, handled by libCMS
@@ -69,9 +73,14 @@ struct TinyDFT_struct
     int    *blk_mat_ptr;    // Size num_total_sp, offsets of blocks in the blocked matrix
     int    *Mpair_flag;     // Size nshell*nthread, flags for marking if (M, i) is updated 
     int    *Npair_flag;     // Size nshell*nthread, flags for marking if (N, i) is updated 
+//    omp_lock_t *J_blk_locks;
+//    omp_lock_t *K_blk_locks;
+    pthread_spinlock_t *J_blk_locks;
+    pthread_spinlock_t *K_blk_locks;
     double *J_blk_mat;      // Size nbf-by-nbf, blocked J matrix
     double *K_blk_mat;      // Size nbf-by-nbf, blocked K matrix
     double *D_blk_mat;      // Size nbf-by-nbf, blocked D matrix
+    double *dm_scrval;      // Size num_total_sp
     double *JKacc_buf;      // Size unknown, all thread's buffer for accumulating J and K matrices
     double *FM_strip_buf;   // Size unknown, thread-private buffer for F_MP and F_MQ blocks
     double *FN_strip_buf;   // Size unknown, thread-private buffer for F_NP and F_NQ blocks

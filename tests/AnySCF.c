@@ -60,6 +60,8 @@ void TinyDFT_SCF(TinyDFT_p TinyDFT, const int max_iter, int J_op, int K_op)
     if (K_op == 0) K_direct = 1;
     if (K_op == 1) K_denfit = 1;
     if (K_op == 2) K_xc     = 1;
+    if (K_op == 3) K_direct = 0;
+
     if (xc_hybrid == 1)
     {
         if (J_direct == 1) K_direct = 1;
@@ -76,12 +78,17 @@ void TinyDFT_SCF(TinyDFT_p TinyDFT, const int max_iter, int J_op, int K_op)
         double st0, et0, st1, et1, st2;
         double J_time = 0, K_time = 0, XC_time = 0;
         st0 = get_wtime_sec();
+
+        double scrtol = TinyDFT->scf_scrtol / (nbf * nbf);
+
+        printf("SCF screening tolerance for ERI in JK build: %.3e\n", scrtol);
+
         
         // Build the Fock matrix
         if (JK_direct == 1)
         {
             st1 = get_wtime_sec();
-            TinyDFT_build_JKmat(TinyDFT, D_mat, J_mat, K_mat);
+            TinyDFT_build_JKmat(TinyDFT, D_mat, J_mat, K_mat, scrtol);
             st2 = get_wtime_sec();
             J_time = 0.5 * (st2 - st1);
             K_time = 0.5 * (st2 - st1);
@@ -89,7 +96,7 @@ void TinyDFT_SCF(TinyDFT_p TinyDFT, const int max_iter, int J_op, int K_op)
         if (JK_direct == 0 && J_direct == 1)
         {
             st1 = get_wtime_sec();
-            TinyDFT_build_JKmat(TinyDFT, D_mat, J_mat, NULL);
+            TinyDFT_build_JKmat(TinyDFT, D_mat, J_mat, NULL, scrtol);
             st2 = get_wtime_sec();
             J_time = st2 - st1;
         }
@@ -103,7 +110,7 @@ void TinyDFT_SCF(TinyDFT_p TinyDFT, const int max_iter, int J_op, int K_op)
         if (JK_direct == 0 && K_direct == 1)
         {
             st1 = get_wtime_sec();
-            TinyDFT_build_JKmat(TinyDFT, D_mat, NULL, K_mat);
+            TinyDFT_build_JKmat(TinyDFT, D_mat, NULL, K_mat, scrtol);
             st2 = get_wtime_sec();
             K_time = st2 - st1;
         }
@@ -212,7 +219,7 @@ void print_usage(const char *argv0)
 {
     printf("Usage: %s <basis> <xyz> <niter> <direct/DF J> <direct/DF/DFT K/XC> <df_basis> <X-func> <C-func>\n", argv0);
     printf("  * direct/DF J: 0 for direct method, 1 for density fitting\n");
-    printf("  * direct/DF/DFT K/XC: 0 for direct method K, 1 for density fitting K, 2 for DFT XC\n");
+    printf("  * direct/DF/DFT K/XC: 0 for direct method K, 1 for density fitting K, 2 for DFT XC, 3 for no XC\n");
     printf("  * available XC functions: LDA_X, LDA_C_XA, LDA_C_PZ, LDA_C_PW,\n");
     printf("                            GGA_X_PBE, GGA_X_B88, GGA_C_PBE, GGA_C_LYP, \n");
     printf("                            HYB_GGA_XC_B3LYP, HYB_GGA_XC_B3LYP5\n");
@@ -235,14 +242,15 @@ int main(int argc, char **argv)
     J_op  = atoi(argv[4]);
     K_op  = atoi(argv[5]);
     if (J_op < 0 || J_op > 1) J_op = 0;
-    if (K_op < 0 || K_op > 2) K_op = 0;
+    if (K_op < 0 || K_op > 3) K_op = 0;
     printf("%s will use: ", argv[0]);
     if (J_op == 0) printf("direct J, ");
     if (J_op == 1) printf("denfit J, ");
     if (K_op == 0) printf("direct K\n");
     if (K_op == 1) printf("denfit K\n");
     if (K_op == 2) printf("DFT XC\n");
-    
+    if (K_op == 3) printf("no XC\n");
+
     // Initialize TinyDFT
     TinyDFT_p TinyDFT;
     TinyDFT_init(&TinyDFT, argv[1], argv[2]);

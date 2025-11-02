@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <omp.h>
+#include <float.h>
 
 #include "linalg_lib_wrapper.h"
 
@@ -142,4 +143,19 @@ void TinyDFT_CDIIS(TinyDFT_p TinyDFT, const double *X_mat, const double *S_mat, 
     memset(F_mat, 0, mat_msize);
     for (int i = 0; i < TinyDFT->DIIS_len; i++)
         cblas_daxpy(mat_size, DIIS_rhs[i], F0_mat + i * mat_size, 1, F_mat, 1);
+}
+
+void TinyDFT_CDIIS_Reset(TinyDFT_p TinyDFT)
+{
+    size_t mat_msize = DBL_MSIZE * TinyDFT->mat_size;
+    int MAX_DIIS_1 = MAX_DIIS + 1;
+    TinyDFT->DIIS_len    = 0;
+    TinyDFT->DIIS_bmax_id = 0;
+    TinyDFT->DIIS_bmax    = -DBL_MAX;
+    memset(TinyDFT->F0_mat, 0, mat_msize * MAX_DIIS);
+    memset(TinyDFT->R_mat,  0, mat_msize * MAX_DIIS);
+    TinyDFT->DIIS_len = 0;
+    // Initialize B_mat
+    for (int i = 0; i < MAX_DIIS_1 * MAX_DIIS_1; i++) TinyDFT->B_mat[i] = -1.0;
+    for (int i = 0; i < MAX_DIIS_1; i++) TinyDFT->B_mat[i * MAX_DIIS_1 + i] = 0.0;
 }

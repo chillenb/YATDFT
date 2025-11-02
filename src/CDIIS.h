@@ -23,6 +23,8 @@ extern "C" {
 //   F_mat : CDIIS processed X^T * F * X 
 void TinyDFT_CDIIS(TinyDFT_p TinyDFT, const double *X_mat, const double *S_mat, const double *D_mat, double *F_mat);
 
+void TinyDFT_CDIIS_Reset(TinyDFT_p TinyDFT);
+
 #ifdef __cplusplus
 }
 #endif

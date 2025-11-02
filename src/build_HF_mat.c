@@ -210,7 +210,31 @@ static void TinyDFT_Dmat_to_Dblkmat(
     }
 }
 
-void TinyDFT_build_JKmat(TinyDFT_p TinyDFT, const double *D_mat, double *J_mat, double *K_mat)
+static void TinyDFT_dmscreen(
+    const int nshell, const int nbf, const int *shell_bf_num, const int *shell_bf_sind,
+    const int *blk_mat_ptr, double *D_blk_mat, double *dm_scrval
+)
+{
+    #pragma omp for
+    for (int i = 0; i < nshell; i++)
+    {
+        for (int j = 0; j < nshell; j++)
+        {
+            int Dblk_offset = blk_mat_ptr[i * nshell + j];
+            double scrval_ij = 0.0;
+            for (int p = 0; p < shell_bf_num[i]; p++)
+            {
+                for (int q = 0; q < shell_bf_num[j]; q++)
+                {
+                    scrval_ij = fmax(scrval_ij, fabs(D_blk_mat[Dblk_offset + p * shell_bf_num[j] + q]));
+                }
+            }
+            dm_scrval[i * nshell + j] = scrval_ij;
+        }
+    }
+}
+
+void TinyDFT_build_JKmat(TinyDFT_p TinyDFT, const double *D_mat, double *J_mat, double *K_mat, double scrtol)
 {
     int    nbf            = TinyDFT->nbf;
     int    nshell         = TinyDFT->nshell;
@@ -230,10 +254,14 @@ void TinyDFT_build_JKmat(TinyDFT_p TinyDFT, const double *D_mat, double *J_mat, 
     double *J_blk_mat     = TinyDFT->J_blk_mat;
     double *K_blk_mat     = TinyDFT->K_blk_mat;
     double *D_blk_mat     = TinyDFT->D_blk_mat;
+    double *dm_scrval     = TinyDFT->dm_scrval;
     double *FM_strip_buf  = TinyDFT->FM_strip_buf;
     double *FN_strip_buf  = TinyDFT->FN_strip_buf;
     Simint_p simint       = TinyDFT->simint;
-    
+
+    int64_t ints_total = 0;
+    int64_t ints_computed = 0;
+
     int build_J = (J_mat == NULL) ? 0 : 1;
     int build_K = (K_mat == NULL) ? 0 : 1;
     if (build_J == 0 && build_K == 0) return;
@@ -244,10 +272,17 @@ void TinyDFT_build_JKmat(TinyDFT_p TinyDFT, const double *D_mat, double *J_mat, 
     #pragma omp parallel
     {
         int tid = omp_get_thread_num();
+        int64_t ints_computed_this_thread = 0;
+        int64_t ints_total_this_thread = 0;
         
         TinyDFT_Dmat_to_Dblkmat(
             nshell, nbf, shell_bf_num, shell_bf_sind, 
             blk_mat_ptr, D_mat, D_blk_mat
+        );
+
+        TinyDFT_dmscreen(
+            nshell, nbf, shell_bf_num, shell_bf_sind,
+            blk_mat_ptr, D_blk_mat, dm_scrval
         );
         
         // Create ERI batching auxiliary data structures
@@ -269,6 +304,8 @@ void TinyDFT_build_JKmat(TinyDFT_p TinyDFT, const double *D_mat, double *J_mat, 
             int M = valid_sp_lid[MN];
             int N = valid_sp_rid[MN];
             double scrval1 = sp_scrval[M * nshell + N];
+
+            double dm_scrval1 = dm_scrval[M * nshell + N];
             
             double *J_MN_buf = TinyDFT->JKacc_buf + tid * max_JKacc_buf;
             double *J_MN = J_blk_mat + blk_mat_ptr[M * nshell + N];
@@ -285,9 +322,11 @@ void TinyDFT_build_JKmat(TinyDFT_p TinyDFT, const double *D_mat, double *J_mat, 
             
             for (int PQ = 0; PQ < num_valid_sp; PQ++)
             {
+                ints_total_this_thread++;
                 int P = valid_sp_lid[PQ];
                 int Q = valid_sp_rid[PQ];
                 double scrval2 = sp_scrval[P * nshell + Q];
+                double dm_scrval2 = dm_scrval[P * nshell + Q];
                 
                 // Symmetric uniqueness check, from GTFock
                 if ((M > P && (M + P) % 2 == 1) || 
@@ -299,12 +338,32 @@ void TinyDFT_build_JKmat(TinyDFT_p TinyDFT, const double *D_mat, double *J_mat, 
                 continue;
                 
                 // Shell screening 
-                if (fabs(scrval1 * scrval2) <= scrtol2) continue;
+                double Qmnpq = fabs(scrval1 * scrval2);
+                if (Qmnpq <= scrtol) continue;
+
+                // dm screening
+
+                if (!build_K)
+                {
+                    if ( (4 * dm_scrval1 * Qmnpq <= scrtol) &&
+                         (4 * dm_scrval2 * Qmnpq <= scrtol) )
+                        continue;
+                } else {
+                    if ( (4 * dm_scrval1 * Qmnpq <= scrtol) &&
+                         (4 * dm_scrval2 * Qmnpq <= scrtol) &&
+                         (dm_scrval[N * nshell + P] * Qmnpq <= scrtol) &&
+                         (dm_scrval[N * nshell + Q] * Qmnpq <= scrtol) &&
+                         (dm_scrval[M * nshell + P] * Qmnpq <= scrtol) &&
+                         (dm_scrval[M * nshell + Q] * Qmnpq <= scrtol) )
+                        continue;
+                }
+
                 
                 // Push ket-side shell pair to corresponding list
                 int ket_id = CMS_Simint_get_sp_AM_idx(simint, P, Q);
                 KetShellpairList_p dst_sp_list = &thread_ksp_lists->ket_shellpair_lists[ket_id];
                 add_shellpair_to_KetShellPairList(dst_sp_list, P, Q);
+                ints_computed_this_thread++;
                 
                 // If the ket-side shell pair list we just used is full, handle it
                 if (dst_sp_list->npairs == MAX_LIST_SIZE)
@@ -423,7 +482,14 @@ void TinyDFT_build_JKmat(TinyDFT_p TinyDFT, const double *D_mat, double *J_mat, 
         
         CMS_Simint_free_multi_sp(thread_multi_shellpair);
         free_ThreadKetShellpairLists(thread_ksp_lists);
+
+#pragma omp atomic
+    ints_total += ints_total_this_thread;
+#pragma omp atomic
+    ints_computed += ints_computed_this_thread;
     }  // End of "#pragma omp parallel"
+    double frac = (double)ints_computed / (double)ints_total;
+    printf("ERI screening in JK build: %ld / %ld = %.6f %%\n", ints_computed, ints_total, frac * 100.0);
 }
 
 void TinyDFT_calc_HF_energy(

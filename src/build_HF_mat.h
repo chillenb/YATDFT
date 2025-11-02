@@ -25,7 +25,7 @@ void TinyDFT_build_Hcore_S_X_mat(TinyDFT_p TinyDFT, double *Hcore_mat, double *S
 // Output parameters:
 //   J_mat : Coulomb matrix, == NULL will skip the construction of J_mat
 //   K_mat : HF exchange matrix, == NULL will skip the construction of K_mat
-void TinyDFT_build_JKmat(TinyDFT_p TinyDFT, const double *D_mat, double *J_mat, double *K_mat);
+void TinyDFT_build_JKmat(TinyDFT_p TinyDFT, const double *D_mat, double *J_mat, double *K_mat, double scrtol);
 
 // Calculate Hartree-Fock energies
 // Input parameters:

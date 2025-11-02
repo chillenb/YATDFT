@@ -17,6 +17,8 @@
 #include "build_XCmat.h"
 #include "eval_XC_func.h"
 
+#define SIMDLEN 8
+
 // Flatten shell info to basis function info for XC calculation
 // Input parameter:
 //   TinyDFT : Initialized TinyDFT structure
@@ -117,9 +119,7 @@ void TinyDFT_setup_XC_integral(TinyDFT_p TinyDFT, const char *xf_str, const char
     int nintp     = TinyDFT->nintp;
     int nthread   = TinyDFT->nthread;
     int nintp_blk = 1024; 
-    if (nthread > 8)  nintp_blk = 2048;
-    if (nthread > 16) nintp_blk = 4096;
-    if (nthread > 32) nintp_blk = 8192;
+
     size_t workbuf_msize = DBL_MSIZE * nintp_blk * (nbf + 6);
     workbuf_msize += DBL_MSIZE * nbf * nbf;
     TinyDFT->nintp_blk  = nintp_blk;
@@ -266,7 +266,7 @@ static void TinySCF_eval_basis_func(
     double *dphi_dy = phi + nbf * ld_phi * 2;
     double *dphi_dz = phi + nbf * ld_phi * 3;
     
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(static)
     for (int i = 0; i < nbf; i++)
     {
         const int    bfnp = bf_nprim[i];
@@ -285,7 +285,7 @@ static void TinySCF_eval_basis_func(
         double *dphi_dy_i = dphi_dy + offset_i;
         double *dphi_dz_i = dphi_dz + offset_i;
         
-        #pragma omp simd
+        #pragma omp simd simdlen(SIMDLEN)
         for (int j = sintp; j < eintp; j++)
         {
             double dx   = ipx[j] - bfx;
@@ -362,14 +362,14 @@ static void TinyDFT_eval_electron_density(
     //    drho_dk{g} = 2 * (2 * \sum_{u} D_phi_{u,g} * dphi_dk_{u,g}), k = x, y, z
     // Note: the "2 *" before \sum is that we use D = Cocc * Cocc^T
     //       instead of D = 2 * Cocc * Cocc^T outside
-    int nthread = omp_get_num_threads();
-    #pragma omp parallel num_threads(nthread)
+    #pragma omp parallel
     {
+        int nthread = omp_get_num_threads();
         int tid  = omp_get_thread_num();
         int spos, epos, len;
         calc_block_spos_len(npt, nthread, tid, &spos, &len);
         epos = spos + len;
-        #pragma omp simd
+        #pragma omp simd simdlen(SIMDLEN)
         for (int g = spos; g < epos; g++) 
         {
             rho[g]     = 0.0;
@@ -385,7 +385,7 @@ static void TinyDFT_eval_electron_density(
             const double *dphi_dy_u = dphi_dy + phi_offset;
             const double *dphi_dz_u = dphi_dz + phi_offset;
             const double *D_phi_u   = D_phi   + u * npt;
-            #pragma omp simd
+            #pragma omp simd simdlen(SIMDLEN)
             for (int g = spos; g < epos; g++)
             {
                 double D_phi_ug = D_phi_u[g];
@@ -395,7 +395,7 @@ static void TinyDFT_eval_electron_density(
                 drho_dz[g] += dphi_dz_u[g] * D_phi_ug;
             }
         }
-        #pragma omp simd
+        #pragma omp simd simdlen(SIMDLEN)
         for (int g = spos; g < epos; g++) 
         {
             rho[g]     *= 2.0;
@@ -464,7 +464,7 @@ static double TinyDFT_eval_LDA_XC_func(
     }
     
     double E_xc = 0.0;
-    #pragma omp simd
+    #pragma omp simd simdlen(SIMDLEN)
     for (int i = 0; i < npt; i++)
     {
         exc[i] = ex[i] + ec[i];
@@ -499,14 +499,14 @@ static void TinyDFT_build_XC_LDA_partial(
 {
     // XC_{u,v} = \sum_{g} phi_{u,g} * vxc_{g} * ipw_{g} * phi_{v,g} 
     double *phi_vxc_w = workbuf + npt * 4;
-    #pragma omp simd
+    #pragma omp simd simdlen(SIMDLEN)
     for (int g = 0; g < npt; g++) vxc[g] *= ipw[g];
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(static)
     for (int u = 0; u < nbf; u++)
     {
         const double *phi_u = phi + u * ld_phi;
         double *phi_vxc_w_u = phi_vxc_w + u * npt;
-        #pragma omp simd
+        #pragma omp simd simdlen(SIMDLEN)
         for (int g = 0; g < npt; g++)
             phi_vxc_w_u[g] = phi_u[g] * vxc[g];
     }
@@ -583,7 +583,7 @@ static double TinyDFT_eval_GGA_XC_func(
     }
     
     double E_xc = 0.0;
-    #pragma omp simd
+    #pragma omp simd simdlen(SIMDLEN)
     for (int i = 0; i < npt; i++)
     {
         exc[i]    = ex[i]      + ec[i];
@@ -624,14 +624,14 @@ static void TinyDFT_build_XC_GGA_partial(
 {
     // 1. \sum_{g} vrho_{g} * ipw_{g} * phi_{u,g} * phi_{v,g} 
     double *phi_vrho_w = workbuf + npt * 6;
-    #pragma omp simd
+    #pragma omp simd simdlen(SIMDLEN)
     for (int g = 0; g < npt; g++) vrho[g] *= ipw[g];
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(static)
     for (int u = 0; u < nbf; u++)
     {
         double *phi_u = phi + u * ld_phi;
         double *phi_vrho_w_u = phi_vrho_w + u * npt;
-        #pragma omp simd
+        #pragma omp simd simdlen(SIMDLEN)
         for (int g = 0; g < npt; g++)
             phi_vrho_w_u[g] = phi_u[g] * vrho[g];
     }
@@ -648,10 +648,10 @@ static void TinyDFT_build_XC_GGA_partial(
     const double *drho_dy = rho + ld_rho * 2;
     const double *drho_dz = rho + ld_rho * 3;
     // (1) Combine ipw with vsigma
-    #pragma omp simd
+    #pragma omp simd simdlen(SIMDLEN)
     for (int g = 0; g < npt; g++) vsigma[g] *= 2.0 * ipw[g];
     // (2) Combine ipw, vsigma with phi; combine drho_dk with dphi_dk, k = x, y, z
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(static)
     for (int u = 0; u < nbf; u++)
     {
         int phi_offset_u = u * ld_phi;
@@ -659,7 +659,7 @@ static void TinyDFT_build_XC_GGA_partial(
         double *dphi_dx_u = dphi_dx + phi_offset_u;
         double *dphi_dy_u = dphi_dy + phi_offset_u;
         double *dphi_dz_u = dphi_dz + phi_offset_u;
-        #pragma omp simd
+        #pragma omp simd simdlen(SIMDLEN)
         for (int g = 0; g < npt; g++)
         {
             phi_u[g]     *= vsigma[g];
@@ -684,9 +684,9 @@ static void TinyDFT_build_XC_GGA_partial(
         CblasRowMajor, CblasNoTrans, CblasTrans, nbf, nbf, npt,
         1.0, phi, ld_phi, dphi_dz, ld_phi, 1.0, tmp_mat, nbf
     );
-    #pragma omp parallel for simd 
+    #pragma omp parallel for simd schedule(static)
     for (int i = 0; i < nbf * nbf; i++) XC_mat[i] += tmp_mat[i];
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(static)
     for (int u = 0; u < nbf; u++)
     {
         double *XC_mat_u  = XC_mat  + u * nbf;
